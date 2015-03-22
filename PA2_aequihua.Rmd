@@ -1,39 +1,212 @@
 ---
-title: "Reproducible Research: Peer Assessment 2"
+title: "Most Severe Weather Events for the United States"
 author: "Arturo Equihua"
 date: "Wednesday, March 18, 2015"
 output: html_document
 ---
 
-#Assignment
+##Synopsis
+Weather events can be very damaging for countries, both in terms of impacts to the population health and the overall economy. In particular, for the United States, an analysis made to a 60-year period of weather event data collected by the National Weather Service produces the following outcomes:
 
-The basic goal of this assignment is to explore the NOAA Storm Database and answer some basic questions about severe weather events. You must use the database to answer the questions below and show the code for your entire analysis. Your analysis can consist of tables, figures, or other summaries. You may use any R package you want to support your analysis.
+1-From a public health perspective, the most damaging event for the US has been tornadoes, as they have caused almost 100,000 injured and people killed in the 60-year period. Excessive heat waves are the second cause of injuries/death for the country.
 
-##Questions
+2-From an economic perspective, the most damaging events had been floods and hurricanes, especially for property destruction (buildings, houses, roads, etc.). These events alone have costed more than 150 billion USD in the 60-year period.
 
-Your data analysis must address the following questions:
+3-Also from an economic perspective, droughts have caused significant losses to farmers across the country.
 
--Across the United States, which types of events (as indicated in the EVTYPE variable) are most harmful with respect to population health?
--Across the United States, which types of events have the greatest economic consequences?
+##Data Processing
+To build the analysis, historic data of severe weather events in the US was captured from the *repdata-data-StormData.csv* file available [here](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2). This dataset collects all weather event information between years 1950 and 2011.
 
-Consider writing your report as if it were to be read by a government or municipal manager who might be responsible for preparing for severe weather events and will need to prioritize resources for different types of events. However, there is no need to make any specific recommendations in your report.
+The data definition and the full glossary of terms used in the dataset was obtained from the ["Storm Data Preparation" document by the National Weather Service](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf), and also the [FAQ](https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2FNCDC%20Storm%20Events-FAQ%20Page.pdf) was reviewed.
 
-##Document Layout
+The code to load the data is shown below:
+```{r load_data, echo=TRUE, results='hide', warning=FALSE, cache=FALSE}
+  rawdata <- read.table(bzfile("./repdata-data-StormData.csv.bz2"),
+                        sep=",",as.is=TRUE,header=TRUE)
+```
 
-Language: Your document should be written in English.
+From all the columns contained in the raw file, these are the columns that are relevant for the study, as the focus is to work on information about people health impact and economic damage:
 
-Title: Your document should have a title that briefly summarizes your data analysis
+- BGN_DATE (chr) : Date of the event in M-D-Y format
+- COUNTY (num) : Numeric ID of the County
+- COUNTYNAME (chr) : Name of the County
+- STATE (chr): Abbreviated name of the state of the country
+- EVTYPE (chr) : Short name of the type of event (e.g. Tornado, Hurricane)
+- FATALITIES (num) : Number of deceased people as a result of the event
+- INJURIES (num) : Number of injured people as a result of the event
+- PROPDMG (num), PROPDMGEXP(chr) : Combined to express the economic impact of the event in property damages. In particular, the EXP char field can be "K" (thousands), "M" (millions) or "B" (billions).
+- CROPDMG (num), CROPDMGEXP(chr) : Combined to express the economic impact of the event in crop damages. The EXP field has the same criteria as with Property.
 
-Synopsis: Immediately after the title, there should be a synopsis which describes and summarizes your analysis in at most 10 complete sentences.
+The raw data needs then to be filtered for the relevant columns, and also some treatment is required on the date, people fatality/injury and economic damage figures. In particular, the date needs to be converted from character to date, a summed column needs to be created to combine deceases and injuries, and the economic figures need to be standardized depending on the unit (K for thousands, M for millions or B for billions). The following code shows the transformations done:
+```{r select_data, echo=TRUE, results='hide', warning=FALSE, message=FALSE,cache=FALSE}
+  library(dplyr)
+  library(stringr)
+  library(lubridate)
 
-There should be a section titled Data Processing which describes (in words and code) how the data were loaded into R and processed for analysis. In particular, your analysis must start from the raw CSV file containing the data. You cannot do any preprocessing outside the document. If preprocessing is time-consuming you may consider using the cache = TRUE option for certain code chunks.
+  # Select the columns
+  stormdata <- select(rawdata,BGN_DATE:EVTYPE,FATALITIES:CROPDMGEXP)
 
-There should be a section titled Results in which your results are presented.
+# Convert the date data to a date column (no need for time data)
+  stormdata <- mutate(stormdata,BGN_DATE=word(BGN_DATE,1))
+  stormdata <- mutate(stormdata,BeginDateTime=mdy(BGN_DATE)) 
 
-You may have other sections in your analysis, but Data Processing and Results are required.
+# Add a Year column
+  stormdata <- mutate(stormdata,Year=year(BeginDateTime))
 
-The analysis document must have at least one figure containing a plot.
+# Convert the US dollar amounts based on the EXP character field (K, M or B to denote thousands, millions or billions)
+  convert <- function(num, code) {
+    newnum = num
+    if (code=="K")
+       newnum=num*1000
+    else if (code=="M")
+       newnum=num*1000000
+    else if (code=="B")
+       newnum=num*1000000000
+    newnum
+  }
+  stormdata <- mutate(stormdata, 
+                      PropDamage=mapply(convert,PROPDMG,PROPDMGEXP),
+                      CropDamage=mapply(convert,CROPDMG,CROPDMGEXP),
+                      SumDamage=PropDamage+CropDamage)
 
-Your analyis must have no more than three figures. Figures may have multiple plots in them (i.e. panel plots), but there cannot be more than three figures total.
+# Add a column that combines fatality and injury figures 
+  stormdata <- mutate(stormdata,
+                      AffectedPeople=FATALITIES+INJURIES)
 
-You must show all your code for the work in your analysis document. This may make the document a bit verbose, but that is okay. In general, you should ensure that echo = TRUE for every code chunk (this is the default setting in knitr).
+# Take out columns that are no longer needed
+  stormdata = select(stormdata,-(BGN_DATE:TIME_ZONE))
+  stormdata = select(stormdata,-(PROPDMG:CROPDMGEXP))
+```
+
+The steps above produced a filtered set of data. For the purposes of the analysis, which considers information at the country level, the data needs to be summarized at the Event Type Level.
+
+This is the code to produce the summarized data:
+
+```{r summarize_data, echo=TRUE, results='hide', warning=FALSE, message=FALSE,cache=FALSE}
+
+# Summarize by Year and Event Type
+
+  library(plyr)
+
+  # Group the Fatalities, Injuries, PropDamage, CropDamage, SumDamage and Affected People figures
+  sumed=ddply(stormdata,c("EVTYPE"),
+              summarise,
+              Quantity=length(EVTYPE),
+              Fatalities=sum(FATALITIES),
+              Injuries=sum(INJURIES),
+              AffectedPeople=sum(AffectedPeople),
+              PropDamage=sum(PropDamage),
+              CropDamage=sum(CropDamage),
+              SumDamage=sum(SumDamage))
+```
+
+The following is the resulting list of data elements for the rest of the analysis:
+
+- EVTYPE (chr) : Short name of the type of event (e.g. Tornado, Hurricane)
+- Quantity (num)  : Number of events per event type across the period
+- FATALITIES (num) : Number of deceased people as a result of the event
+- INJURIES (num) : Number of injured people as a result of the event
+- AffectedPeople (num) : Combined fatality and injury figures
+- PropDamage(num) : Amount of property damage in USD
+- CropDamage(num) : Amount of crop damage in USD
+- SumDamage(num) : Total amount of damage in USD
+
+The following section presents the findings of the analysis of this set of data. These outcomes constitute a basis for initial discussions about that is the priority that needs to be set for the attention of the most severe weather events at the country level.
+
+##Results Obtained
+### Impact in People Fatality or Injury
+By aggregating the historic information of the 1950-2011 period in terms of injured and deceased people, it is clear that **tornadoes** are, by far, the most destructive events for population:
+
+```{r plot_health, echo=TRUE, results='hide', warning=FALSE, message=FALSE,cache=FALSE,fig.cap="Top 8 Weather Events in terms of people health"}
+
+# Reorder by people impact
+  library(dplyr)
+  sample=head(arrange(sumed, desc(AffectedPeople)),8)
+
+# For ggplot, the X axis needs to be explicily reordered to show the bars
+# in order of size
+  sample$EVTYPE = with(sample,reorder(EVTYPE,AffectedPeople))
+
+  library(reshape2)
+  melted=melt(sample,id=c("EVTYPE"),measure.vars=c("Fatalities","Injuries"))
+  colnames(melted)=c("EvType","Impact","AffectedPeople")
+
+# Produce the plot for top 8 events
+# Did two barplots in the same grid: One with the total and another with the 
+# stacked bar
+  library(ggplot2)
+  ggplot(data=sample, aes(x=EVTYPE, y=AffectedPeople)) +
+        geom_bar(colour="black", fill="#DD8888", width=.8,stat="identity")+
+        ggtitle("People Highest-impact Types of Weather Events (1950-2011)") +
+        ylab("Affected People(Fatality + Injured)") +
+        xlab("Type of Event") +
+        scale_x_discrete(limits=rev(levels(sample$EVTYPE))) +
+        geom_bar(aes(x=melted$EvType,y=melted$AffectedPeople,
+                     fill=melted$Impact),stat="identity",width=.5)+
+        scale_fill_manual(values=c("dodgerblue4", "darkolivegreen4",
+                              "darkorchid3", "goldenrod1")) +
+        theme(panel.background = element_rect(fill = 'grey75'),
+              plot.background=element_rect(fill="darkseagreen"),             
+              panel.grid.major = element_line(colour = "orange", size=1),
+              panel.grid.minor = element_line(colour = "blue"),
+              legend.title=element_blank(),
+              axis.title.x = element_text(face="bold"),
+              axis.title.y = element_text(face="bold",size=10),
+              axis.text.x = element_text(angle=90, vjust=1,colour="blue"),
+              axis.text.y = element_text(angle=90, vjust=1,colour="blue"))
+  
+```
+
+Other events that unfortunately lead to the most fatalities and injured people are, in that order, **Excessive Heat, Thunderstorms with Wind, Floods, Lightning storms, Heat, Flash floods and Ice Storms**. These are the events for which authorities should prepare the most in terms of public health planning.
+
+## Economic Impact
+When looking at weather events in terms of economic damage (destroyed private property, loss of farm crops), the findings vary significantly:
+
+```{r plot_economic, echo=TRUE, results='hide', warning=FALSE, message=FALSE,cache=FALSE,fig.cap="Top 8 Weather Events in terms of economic damage"}
+
+# Reorder by people impact
+  library(dplyr)
+  sample=head(arrange(sumed, desc(SumDamage)),8)
+  sample=mutate(sample,PropDamage=PropDamage/1e+6,
+                CropDamage=CropDamage/1e+6,
+                SumDamage=SumDamage/1e+6)
+
+# For ggplot, the X axis needs to be explicily reordered to show the bars
+# in order of size
+  sample$EVTYPE = with(sample,reorder(EVTYPE,SumDamage))
+
+  library(reshape2)
+  melted=melt(sample,id=c("EVTYPE"),measure.vars=c("PropDamage","CropDamage"))
+  colnames(melted)=c("EvType","Impact","EconomicDamage")
+
+# Produce the plot for top 8 events
+# Did two barplots in the same grid: One with the total and another with the 
+# stacked bar
+  library(ggplot2)
+  ggplot(data=sample, aes(x=EVTYPE, y=SumDamage)) +
+        geom_bar(colour="black", fill="#DD8888", width=.8,stat="identity")+
+        ggtitle("Economic Highest-impact Types of Weather Events (1950-2011)") +
+        ylab("Economic Damage (million USD)") +
+        xlab("Type of Event") +
+        scale_x_discrete(limits=rev(levels(sample$EVTYPE))) +
+        geom_bar(aes(x=melted$EvType,y=melted$EconomicDamage,
+                     fill=melted$Impact),stat="identity",width=.5)+
+        scale_fill_manual(values=c("dodgerblue4", "darkolivegreen4",
+                              "darkorchid3", "goldenrod1"),
+                          labels=c("Property Damage","Crop Damage")) +
+        theme(panel.background = element_rect(fill = 'grey75'),
+              plot.background=element_rect(fill="lightblue"),             
+              panel.grid.major = element_line(colour = "orange", size=1),
+              panel.grid.minor = element_line(colour = "blue"),
+              legend.title=element_blank(),
+              axis.title.x = element_text(face="bold"),
+              axis.title.y = element_text(face="bold",size=10),
+              axis.text.x = element_text(angle=90, vjust=1,colour="blue"),
+              axis.text.y = element_text(angle=90, vjust=1,colour="blue"))
+  
+```
+
+
+What the above suggests is that water-related events such as **floods and hurricanes** are the most damaging events for the economy of the country.  In particular, floods alone have caused economic damages for over **150 billion USD** in the 60-year period under analysis. It also can be seen that the damage to property (buildings, infrastructure) is the highest in most of the cases. On the other hand, drought is the most damaging weather condition for farmers.
+
+

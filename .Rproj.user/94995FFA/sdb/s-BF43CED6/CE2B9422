@@ -1,0 +1,17 @@
+{
+    "contents" : "# reformats time data\nBGN_TIME=sub(\"([[:digit:]]{2,2})$\", \":\\\\1\",BGN_TIME))\nstormdata <- mutate(stormdata,\n                    BeginDateTime=paste(BGN_DATE,BGN_TIME))\nstormdata <- mutate(stormdata,BeginDateTime=paste(BeginDateTime,\":00\",sep=\"\"))\n\n\n# Technique to produce ggplot bar\nTop8=melt(head(sumed,8),id=c(\"EVTYPE\"),measure.vars=c(\"AffectedPeople\"))\ncolnames(Top8) = c(\"EvType\",\"Impact\",\"AffectedPeople\")\nggplot(Top8, aes(x = EvType, y = AffectedPeople,fill=Impact)) +\n  geom_bar(stat='identity') +\n  ggtitle(\"People Highest-impact Types of Weather Events\") + \n  ylab(\"Number of Affected People\") +\n  xlab(\"Type of Event\")\n\nggplot(data=head(sumed,8), aes(x=EVTYPE, y=AffectedPeople)) +\n      geom_bar(colour=\"black\", fill=\"#DD8888\", width=.8,stat=\"identity\")+\n      ggtitle(\"People Highest-impact Types of Weather Events\") +\n      ylab(\"Affected People(Fatality + Injured)\") +\n      xlab(\"Type of Event\")\n\npar(bg=\"darkgreen\",col=\"yellow\",lwd=1)\nbarplot(head(sumed$AffectedPeople,8),\n        names=head(sumed$EVTYPE,8),\n        xlab=\"Type of Event\",ylab=\"Number of People Affected\",\n        main=\"Highest-Impact Weather Events - Population Health\")\ngrid(col=\"white\") \n\n\n\n\n# Ligas buenas\nhttp://zevross.com/blog/2014/08/04/beautiful-plotting-in-r-a-ggplot2-cheatsheet-3/#working-with-the-legend\n  \n  http://lattice.r-forge.r-project.org/Vignettes/src/lattice-intro/lattice-intro.pdf\n\nhttp://www.jstatsoft.org/v40/i03/paper\n\nhttp://gastonsanchez.com/Handling_and_Processing_Strings_in_R.pdf\n\nhttp://www.cookbook-r.com/\n  \n  http://rstudio-pubs-static.s3.amazonaws.com/11068_8bc42d6df61341b2bed45e9a9a3bf9f4.html\n\n",
+    "created" : 1426983583288.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "3001850511",
+    "id" : "CE2B9422",
+    "lastKnownWriteTime" : 1426992524,
+    "path" : "~/GitHub/Reproducible_Peer2/crap.R",
+    "project_path" : "crap.R",
+    "properties" : {
+        "tempName" : "Untitled1"
+    },
+    "source_on_save" : false,
+    "type" : "r_source"
+}
